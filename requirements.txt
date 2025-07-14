@@ -1,9 +1,11 @@
 streamlit
 tensorflow
-opencv-python
-numpy
-Pillow
-matplotlib
-scikit-learn
 torch
 torchvision
+numpy
+opencv-python
+Pillow
+gtts
+speechrecognition
+whisper
+ollama
