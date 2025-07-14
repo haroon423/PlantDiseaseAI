@@ -5,3 +5,5 @@ numpy
 Pillow
 matplotlib
 scikit-learn
+torch
+torchvision
