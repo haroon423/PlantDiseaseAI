@@ -22,7 +22,7 @@ except ImportError:
 # Load TFLite Model
 # ---------------------------
 @st.cache_resource
-def load_tflite_model(model_path="model_compressed_1.tflite"):
+def load_tflite_model(model_path="model_compressed (1).tflite"):
     if not os.path.exists(model_path):
         st.error(f"❌ TFLite model not found: {model_path}")
         return None, None, None
@@ -238,4 +238,5 @@ if st.button("📄 Download PDF Report"):
             st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
     else:
         st.warning("Please upload an image first to generate a report.")
+
 
