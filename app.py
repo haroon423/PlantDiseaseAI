@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 # Load TFLite Model
 # ---------------------------
 @st.cache_resource
-def load_tflite_model(model_path="model_compressed_1.tflite"):
+def load_tflite_model(model_path="model_compressed (1).tflite"):
     if not os.path.exists(model_path):
         st.error(f"❌ TFLite model not found: {model_path}")
         return None, None, None
@@ -208,3 +208,4 @@ if st.button("📄 Download PDF Report"):
         st.warning("Please upload an image first to generate a report.")
 
   
+
