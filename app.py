@@ -13,7 +13,7 @@ import os
 # **Load Plant Disease Classification Model (VGG16)**
 @st.cache_resource
 def load_vgg_model():
-    return tf.keras.models.load_model("model_compressed (1).tflite")
+    return tf.keras.models.load_model("model_compressed(1).tflite")
 
 vgg_model = load_vgg_model()
 
@@ -135,4 +135,5 @@ if st.button("🎤 Ask with Voice"):
         with open(audio_file_path, "rb") as audio_file:
             audio_bytes = audio_file.read()
             st.audio(audio_bytes, format="audio/mp3")
+
 
