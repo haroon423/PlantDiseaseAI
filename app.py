@@ -3,88 +3,115 @@ import tensorflow as tf
 import numpy as np
 import torch
 import speech_recognition as sr
-import whisper
+import io
+import os
 from gtts import gTTS
 from PIL import Image
 import ollama
-import io
-import os
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+
+# Optional: PDF generation
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    st.warning("⚠️ reportlab not installed. PDF report feature will be disabled.")
+    REPORTLAB_AVAILABLE = False
 
 # ---------------------------
 # Load TFLite Model
 # ---------------------------
 @st.cache_resource
-def load_tflite_model(model_path="model_compressed (1).tflite"):
+def load_tflite_model(model_path="model_compressed_1.tflite"):
     if not os.path.exists(model_path):
         st.error(f"❌ TFLite model not found: {model_path}")
         return None, None, None
+
     interpreter = tf.lite.Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
+    st.success("✅ TFLite model loaded successfully!")
     return interpreter, input_details, output_details
 
 interpreter, input_details, output_details = load_tflite_model()
 
 # ---------------------------
-# Load Whisper Model
+# Whisper Model Safe Load
 # ---------------------------
 @st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("base")
+def load_whisper_safe():
+    try:
+        import whisper
+        model = whisper.load_model("base")
+        st.success("✅ Whisper model loaded successfully!")
+        return model
+    except Exception as e:
+        st.warning(f"⚠️ Whisper model could not be loaded: {str(e)}")
+        return None
 
-whisper_model = load_whisper_model()
+whisper_model = load_whisper_safe()
 
 # ---------------------------
-# Predict Disease using TFLite
+# Disease Prediction (TFLite)
 # ---------------------------
-class_names = [
-    "Apple Scab", "Apple Black Rot", "Apple Cedar Rust", "Apple Healthy",
-    "Blueberry Healthy", "Cherry Powdery Mildew", "Cherry Healthy",
-    "Corn Cercospora Leaf Spot", "Corn Common Rust", "Corn Northern Leaf Blight", "Corn Healthy",
-    "Grape Black Rot", "Grape Esca", "Grape Leaf Blight", "Grape Healthy",
-    "Orange Huanglongbing (Citrus Greening)",
-    "Peach Bacterial Spot", "Peach Healthy",
-    "Pepper Bell Bacterial Spot", "Pepper Bell Healthy",
-    "Potato Early Blight", "Potato Late Blight", "Potato Healthy",
-    "Raspberry Healthy",
-    "Soybean Healthy",
-    "Squash Powdery Mildew",
-    "Strawberry Leaf Scorch", "Strawberry Healthy",
-    "Tomato Bacterial Spot", "Tomato Early Blight", "Tomato Late Blight",
-    "Tomato Leaf Mold", "Tomato Septoria Leaf Spot", "Tomato Spider Mites", 
-    "Tomato Target Spot", "Tomato Yellow Leaf Curl Virus", "Tomato Mosaic Virus", "Tomato Healthy"
-]
-
 def predict_disease_tflite(image):
     if interpreter is None:
-        return "Model not loaded", 0.0
-    image = np.array(image.resize((224, 224)), dtype=np.float32) / 255.0
-    image = np.expand_dims(image, axis=0)
-    interpreter.set_tensor(input_details[0]['index'], image)
+        st.warning("⚠️ Disease model not loaded. Cannot predict.")
+        return None, None
+
+    class_names = [
+        "Apple Scab", "Apple Black Rot", "Apple Cedar Rust", "Apple Healthy",
+        "Blueberry Healthy", "Cherry Powdery Mildew", "Cherry Healthy",
+        "Corn Cercospora Leaf Spot", "Corn Common Rust", "Corn Northern Leaf Blight", "Corn Healthy",
+        "Grape Black Rot", "Grape Esca", "Grape Leaf Blight", "Grape Healthy",
+        "Orange Huanglongbing (Citrus Greening)",
+        "Peach Bacterial Spot", "Peach Healthy",
+        "Pepper Bell Bacterial Spot", "Pepper Bell Healthy",
+        "Potato Early Blight", "Potato Late Blight", "Potato Healthy",
+        "Raspberry Healthy",
+        "Soybean Healthy",
+        "Squash Powdery Mildew",
+        "Strawberry Leaf Scorch", "Strawberry Healthy",
+        "Tomato Bacterial Spot", "Tomato Early Blight", "Tomato Late Blight",
+        "Tomato Leaf Mold", "Tomato Septoria Leaf Spot", "Tomato Spider Mites", 
+        "Tomato Target Spot", "Tomato Yellow Leaf Curl Virus", "Tomato Mosaic Virus", "Tomato Healthy"
+    ]
+
+    img = image.resize((224, 224))
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0).astype(np.float32)
+
+    interpreter.set_tensor(input_details[0]['index'], img_array)
     interpreter.invoke()
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    predicted_index = np.argmax(output_data)
-    confidence = float(np.max(output_data) * 100)
-    return class_names[predicted_index], confidence
+    prediction = interpreter.get_tensor(output_details[0]['index'])[0]
+
+    predicted_class = class_names[np.argmax(prediction)]
+    confidence = np.max(prediction) * 100
+    return predicted_class, confidence
 
 # ---------------------------
-# Ollama Chatbot
+# Ollama AI Chat
 # ---------------------------
 def get_chat_response(user_input):
-    prompt = f"You are a plant disease expert. Answer based on scientific agricultural knowledge.\nQuestion: {user_input}"
+    prompt = f"""
+    You are a plant disease expert. Answer based on scientific agricultural knowledge.
+    Question: {user_input}
+    """
     try:
         response = ollama.chat(model="tinyllama", messages=[{"role": "user", "content": prompt}])
         return response["message"]["content"]
     except Exception as e:
-        return f"❌ Chatbot error: {str(e)}"
+        return f"⚠️ Ollama chat failed: {str(e)}"
 
 # ---------------------------
-# Whisper Speech Recognition
+# Speech Recognition
 # ---------------------------
 def recognize_speech():
+    if whisper_model is None:
+        st.warning("⚠️ Voice chat unavailable because Whisper model could not be loaded.")
+        return None
+
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
         st.info("🎤 Listening...")
@@ -114,9 +141,13 @@ def text_to_speech(response_text):
     return audio_path
 
 # ---------------------------
-# PDF Report Generator
+# PDF Report
 # ---------------------------
 def generate_pdf(disease, confidence, ai_suggestions, chat_history):
+    if not REPORTLAB_AVAILABLE:
+        st.warning("⚠️ PDF report feature unavailable.")
+        return None
+
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -203,9 +234,8 @@ if st.button("🎤 Ask with Voice"):
 if st.button("📄 Download PDF Report"):
     if disease and confidence and response:
         pdf_buffer = generate_pdf(disease, confidence, response, chat_history)
-        st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
+        if pdf_buffer:
+            st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
     else:
         st.warning("Please upload an image first to generate a report.")
-
-  
 
