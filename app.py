@@ -13,10 +13,13 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 # ---------------------------
-# Load TFLite Plant Disease Model
+# Load TFLite Model
 # ---------------------------
 @st.cache_resource
-def load_tflite_model(model_path="model_compressed(1).tflite"):
+def load_tflite_model(model_path="model_compressed_1.tflite"):
+    if not os.path.exists(model_path):
+        st.error(f"❌ TFLite model not found: {model_path}")
+        return None, None, None
     interpreter = tf.lite.Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
@@ -35,51 +38,51 @@ def load_whisper_model():
 whisper_model = load_whisper_model()
 
 # ---------------------------
-# Predict Disease from Image (TFLite)
+# Predict Disease using TFLite
 # ---------------------------
+class_names = [
+    "Apple Scab", "Apple Black Rot", "Apple Cedar Rust", "Apple Healthy",
+    "Blueberry Healthy", "Cherry Powdery Mildew", "Cherry Healthy",
+    "Corn Cercospora Leaf Spot", "Corn Common Rust", "Corn Northern Leaf Blight", "Corn Healthy",
+    "Grape Black Rot", "Grape Esca", "Grape Leaf Blight", "Grape Healthy",
+    "Orange Huanglongbing (Citrus Greening)",
+    "Peach Bacterial Spot", "Peach Healthy",
+    "Pepper Bell Bacterial Spot", "Pepper Bell Healthy",
+    "Potato Early Blight", "Potato Late Blight", "Potato Healthy",
+    "Raspberry Healthy",
+    "Soybean Healthy",
+    "Squash Powdery Mildew",
+    "Strawberry Leaf Scorch", "Strawberry Healthy",
+    "Tomato Bacterial Spot", "Tomato Early Blight", "Tomato Late Blight",
+    "Tomato Leaf Mold", "Tomato Septoria Leaf Spot", "Tomato Spider Mites", 
+    "Tomato Target Spot", "Tomato Yellow Leaf Curl Virus", "Tomato Mosaic Virus", "Tomato Healthy"
+]
+
 def predict_disease_tflite(image):
-    class_names = [
-        "Apple Scab", "Apple Black Rot", "Apple Cedar Rust", "Apple Healthy",
-        "Blueberry Healthy", "Cherry Powdery Mildew", "Cherry Healthy",
-        "Corn Cercospora Leaf Spot", "Corn Common Rust", "Corn Northern Leaf Blight", "Corn Healthy",
-        "Grape Black Rot", "Grape Esca", "Grape Leaf Blight", "Grape Healthy",
-        "Orange Huanglongbing (Citrus Greening)",
-        "Peach Bacterial Spot", "Peach Healthy",
-        "Pepper Bell Bacterial Spot", "Pepper Bell Healthy",
-        "Potato Early Blight", "Potato Late Blight", "Potato Healthy",
-        "Raspberry Healthy",
-        "Soybean Healthy",
-        "Squash Powdery Mildew",
-        "Strawberry Leaf Scorch", "Strawberry Healthy",
-        "Tomato Bacterial Spot", "Tomato Early Blight", "Tomato Late Blight",
-        "Tomato Leaf Mold", "Tomato Septoria Leaf Spot", "Tomato Spider Mites", 
-        "Tomato Target Spot", "Tomato Yellow Leaf Curl Virus", "Tomato Mosaic Virus", "Tomato Healthy"
-    ]
-    
-    img = np.array(image.resize((224, 224))).astype(np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)
-    
-    interpreter.set_tensor(input_details[0]['index'], img)
+    if interpreter is None:
+        return "Model not loaded", 0.0
+    image = np.array(image.resize((224, 224)), dtype=np.float32) / 255.0
+    image = np.expand_dims(image, axis=0)
+    interpreter.set_tensor(input_details[0]['index'], image)
     interpreter.invoke()
     output_data = interpreter.get_tensor(output_details[0]['index'])
-    
-    predicted_class = class_names[np.argmax(output_data)]
-    confidence = np.max(output_data) * 100
-    return predicted_class, confidence
+    predicted_index = np.argmax(output_data)
+    confidence = float(np.max(output_data) * 100)
+    return class_names[predicted_index], confidence
 
 # ---------------------------
-# AI Chatbot using Ollama
+# Ollama Chatbot
 # ---------------------------
 def get_chat_response(user_input):
-    prompt = f"""
-    You are a plant disease expert. Answer based on scientific agricultural knowledge.
-    Question: {user_input}
-    """
-    response = ollama.chat(model="tinyllama", messages=[{"role": "user", "content": prompt}])
-    return response["message"]["content"]
+    prompt = f"You are a plant disease expert. Answer based on scientific agricultural knowledge.\nQuestion: {user_input}"
+    try:
+        response = ollama.chat(model="tinyllama", messages=[{"role": "user", "content": prompt}])
+        return response["message"]["content"]
+    except Exception as e:
+        return f"❌ Chatbot error: {str(e)}"
 
 # ---------------------------
-# Speech Recognition using Whisper
+# Whisper Speech Recognition
 # ---------------------------
 def recognize_speech():
     recognizer = sr.Recognizer()
@@ -102,7 +105,7 @@ def recognize_speech():
         return None
 
 # ---------------------------
-# Text-to-Speech (TTS) using gTTS
+# Text-to-Speech
 # ---------------------------
 def text_to_speech(response_text):
     tts = gTTS(text=response_text, lang="en")
@@ -162,7 +165,7 @@ st.title("🌿 Plant Disease Detection & AI Assistant")
 chat_history = []
 disease, confidence, response = None, None, None
 
-# Image Upload
+# Upload Image
 uploaded_file = st.file_uploader("📤 Upload a leaf image...", type=["jpg", "png", "jpeg"])
 if uploaded_file:
     image = Image.open(uploaded_file)
@@ -196,16 +199,12 @@ if st.button("🎤 Ask with Voice"):
         with open(audio_file_path, "rb") as audio_file:
             st.audio(audio_file.read(), format="audio/mp3")
 
-# PDF Report Download
+# Generate PDF
 if st.button("📄 Download PDF Report"):
     if disease and confidence and response:
         pdf_buffer = generate_pdf(disease, confidence, response, chat_history)
-        st.download_button(
-            "⬇️ Download Report", 
-            data=pdf_buffer, 
-            file_name="plant_disease_report.pdf", 
-            mime="application/pdf"
-        )
+        st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
     else:
         st.warning("Please upload an image first to generate a report.")
 
+  
