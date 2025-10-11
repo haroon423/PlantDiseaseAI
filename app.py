@@ -1,5 +1,5 @@
 # prediction of leaf dieases direction from streamlit cloud with out run code in localy
-# https://plantdiseaseai-aiagent.streamlit.app/
+# https://plantdiseaseai-aiagent.streamlit.app
 import streamlit as st
 import tensorflow as tf
 import numpy as np
@@ -237,5 +237,6 @@ if st.button("📄 Download PDF Report"):
             st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
     else:
         st.warning("⚠️ Please upload an image first to generate a report.")
+
 
 
