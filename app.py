@@ -19,22 +19,22 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
 
 # ---------------------------
-# Load TFLite Model
+# Load Keras Model
 # ---------------------------
 @st.cache_resource
-def load_tflite_model(model_path="model_compressed (1).tflite"):
+def load_keras_model(model_path="plant_disease_vgg16_optimized.keras"):
     if not os.path.exists(model_path):
-        st.error(f"❌ TFLite model not found: {model_path}")
-        return None, None, None
+        st.error(f"❌ Keras model not found: {model_path}")
+        return None
+    try:
+        model = tf.keras.models.load_model(model_path)
+        st.success("✅ Keras model loaded successfully!")
+        return model
+    except Exception as e:
+        st.error(f"❌ Error loading Keras model: {str(e)}")
+        return None
 
-    interpreter = tf.lite.Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-    st.success("✅ TFLite model loaded successfully!")
-    return interpreter, input_details, output_details
-
-interpreter, input_details, output_details = load_tflite_model()
+model = load_keras_model()
 
 # ---------------------------
 # Whisper Model Safe Load
@@ -53,11 +53,11 @@ def load_whisper_safe():
 whisper_model = load_whisper_safe()
 
 # ---------------------------
-# Disease Prediction (TFLite)
+# Disease Prediction (Keras)
 # ---------------------------
-def predict_disease_tflite(image):
-    if interpreter is None:
-        st.warning("⚠️ Disease model not loaded. Cannot predict.")
+def predict_disease(image):
+    if model is None:
+        st.warning("⚠️ Model not loaded. Cannot predict.")
         return None, None
 
     class_names = [
@@ -80,14 +80,11 @@ def predict_disease_tflite(image):
 
     img = image.resize((224, 224))
     img_array = np.array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0).astype(np.float32)
+    img_array = np.expand_dims(img_array, axis=0)
 
-    interpreter.set_tensor(input_details[0]['index'], img_array)
-    interpreter.invoke()
-    prediction = interpreter.get_tensor(output_details[0]['index'])[0]
-
-    predicted_class = class_names[np.argmax(prediction)]
-    confidence = np.max(prediction) * 100
+    predictions = model.predict(img_array)
+    predicted_class = class_names[np.argmax(predictions)]
+    confidence = np.max(predictions) * 100
     return predicted_class, confidence
 
 # ---------------------------
@@ -114,7 +111,7 @@ def recognize_speech():
 
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
-        st.info("🎤 Listening...")
+        st.info("🎤 Listening... Please speak clearly.")
         audio = recognizer.listen(source)
     try:
         audio_data = audio.get_wav_data()
@@ -201,9 +198,9 @@ uploaded_file = st.file_uploader("📤 Upload a leaf image...", type=["jpg", "pn
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_container_width=True)
-    with st.spinner("Analyzing disease..."):
-        disease, confidence = predict_disease_tflite(image)
-        st.subheader("🔍 Prediction:")
+    with st.spinner("🔍 Analyzing disease..."):
+        disease, confidence = predict_disease(image)
+        st.subheader("🔍 Prediction Result:")
         st.write(f"**Disease Type:** {disease}")
         st.write(f"**Confidence:** {confidence:.2f}%")
 
@@ -213,7 +210,7 @@ if uploaded_file:
     st.write(response)
 
 # Text Chat
-user_input = st.text_input("💬 Type your question:")
+user_input = st.text_input("💬 Ask a question about plant diseases:")
 if user_input:
     ai_response = get_chat_response(user_input)
     st.write(f"**AI Answer:** {ai_response}")
@@ -237,6 +234,5 @@ if st.button("📄 Download PDF Report"):
         if pdf_buffer:
             st.download_button("⬇️ Download Report", data=pdf_buffer, file_name="plant_disease_report.pdf", mime="application/pdf")
     else:
-        st.warning("Please upload an image first to generate a report.")
-
+        st.warning("⚠️ Please upload an image first to generate a report.")
 
